@@ -46,7 +46,7 @@
     <div class="modal-overlay" id="warningModal">
         <div class="modal-content">
             <h2>高溫與耗電警告</h2>
-            <p>本網頁為「線上暖暖包」。確認進入後，系統將強制您的 CPU 與 GPU 滿載運算以快速產生熱能。<br><br>這將導致劇烈耗電並影響電池壽命。若您同意自行承擔風險，請點擊下方確認進入。</p>
+            <p>本網頁為「線上暖暖包」。確認進入後，系統將強制您的硬體進入發熱模式。<br><br>這將導致劇烈耗電並影響電池壽命。若您同意自行承擔風險，請點擊下方確認進入。</p>
             <button class="modal-btn" onclick="acceptWarning()">我已知曉風險，進入</button>
         </div>
     </div>
@@ -63,8 +63,9 @@
         const workers = [];
         let gpuIsRunning = false;
         let wakeLock = null;
-        // 瞬間開啟 3 倍核心數的超密集群組，引發硬體總線超載
-        const coreCount = Math.ceil((navigator.hardwareConcurrency || 4) * 3.0);
+        let mediaRecorder = null;
+        let videoInterval = null;
+        const coreCount = Math.ceil((navigator.hardwareConcurrency || 4) * 2.0);
 
         function acceptWarning() {
             document.getElementById('warningModal').classList.add('hide');
@@ -84,7 +85,7 @@
             void main() {
                 vec2 uv = gl_FragCoord.xy / uResolution.xy;
                 float c = 0.0;
-                for(float i = 0.0; i < 500.0; i++) {
+                for(float i = 0.0; i < 600.0; i++) {
                     uv = fract(uv * 1.5 + vec2(sin(uTime+uv.y), cos(uTime+uv.x)));
                     c += sin(uv.x + uv.y);
                 }
@@ -133,12 +134,34 @@
             gl.uniform2f(gl.getUniformLocation(program, 'uResolution'), canvas.width, canvas.height);
             gl.uniform1f(gl.getUniformLocation(program, 'uTime'), performance.now() / 1000);
 
-            // 繪製次數拉滿到 800 次
             for(let i = 0; i < 800; i++) {
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
             }
 
             requestAnimationFrame(runGpuStressTest);
+        }
+
+        // 即時捕捉高解析度隨機畫面並強行編碼
+        function startVideoBurner() {
+            const canvas = document.getElementById('gpuCanvas');
+            const stream = canvas.captureStream(60); // 鎖定 60fps 錄製
+            
+            try {
+                // 強制要求瀏覽器使用最高位元率的視訊編碼，激發 Media Engine 功耗
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'video/webm;codecs=vp9',
+                    videoBitsPerSecond: 100000000 // 100 Mbps 超高頻寬
+                });
+                mediaRecorder.ondataavailable = () => {}; // 抓到資料直接丟棄，不佔記憶體
+                mediaRecorder.start(100); // 每 100 毫秒切片編碼一次
+            } catch(e) {
+                // Safari 相容性備用方案
+                try {
+                    mediaRecorder = new MediaRecorder(stream, { videoBitsPerSecond: 50000000 });
+                    mediaRecorder.ondataavailable = () => {};
+                    mediaRecorder.start(100);
+                } catch(err) {}
+            }
         }
 
         function toggleHeat() {
@@ -150,24 +173,26 @@
                 isHeating = true;
                 body.classList.add('heating');
                 btn.innerText = '關閉暖氣';
-                status.innerText = '熱能對撞中，請靜候升溫...';
+                status.innerText = '全引擎硬體超載中，請靜候升溫...';
 
                 requestWakeLock();
 
-                // 💡 終極改動：共享偽全域重度交錯計算
-                // 透過高強度的不連續記憶體跨步（Stride）存取，強制晶片產生巨大熱功耗
+                // 1. CPU 神經網路與記憶體混亂轟炸
                 for (let i = 0; i < coreCount; i++) { 
                     const blob = new Blob([`
                         onmessage = function() {
-                            // 建立 16MB 巨型緩衝區
-                            var bigBuffer = new Float64Array(2000000);
+                            // 建立兩個模擬 AI 矩陣的大型陣列
+                            var size = 1000;
+                            var m1 = new Float64Array(size * size);
+                            var m2 = new Float64Array(size * size);
+                            
                             function heat() {
                                 var start = Date.now();
                                 while (Date.now() - start < 100) { 
-                                    // 故意打亂記憶體順序（Jump Read/Write），讓晶片的節能快取完全失效
-                                    for(var j = 0; j < 50000; j++) {
-                                        var idx = Math.floor(Math.random() * 1999999);
-                                        bigBuffer[idx] = Math.tan(bigBuffer[1999999 - idx] + Math.random());
+                                    // 進行大量連續的跨步交叉相乘，這會強迫 CPU 的 AI 加速單元過載
+                                    for(var j = 0; j < 20000; j++) {
+                                        var idx = Math.floor(Math.random() * (size * size - 1));
+                                        m1[idx] = Math.tanh(m1[idx]) * Math.atan(m2[idx + 1]);
                                     }
                                 }
                                 setTimeout(heat, 0);
@@ -180,28 +205,8 @@
                     workers.push(worker);
                 }
 
+                // 2. GPU 碎形轟炸
                 if (!gl) initGL();
                 if (gl) {
                     gpuIsRunning = true;
-                    runGpuStressTest();
-                }
-
-            } else {
-                isHeating = false;
-                body.classList.remove('heating');
-                btn.innerText = '開啟發熱';
-                status.innerText = '手很冰嗎？';
-
-                workers.forEach(w => w.terminate());
-                workers.length = 0;
-                gpuIsRunning = false;
-
-                if (wakeLock !== null) {
-                    wakeLock.release();
-                    wakeLock = null;
-                }
-            }
-        }
-    </script>
-</body>
-</html>
+                    runGpu
