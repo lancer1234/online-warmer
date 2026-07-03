@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>暖</title>
+    <title>暖暖包</title>
     <style>
         * { box-sizing: border-box; transition: all 1s ease; }
         body {
@@ -20,8 +20,7 @@
             overflow: hidden;
         }
         
-        /* 發熱時的背景變色 */
-        body.heating { background-color: #2b0d0d; }
+        body.heating { background-color: #380808; } /* 暗紅 */
 
         .container { text-align: center; }
         
@@ -32,7 +31,6 @@
             margin-bottom: 40px;
         }
 
-        /* 極簡開關 */
         .heat-btn {
             background: none;
             border: 1px solid #444;
@@ -44,36 +42,85 @@
             border-radius: 0;
         }
         .heat-btn:hover { border-color: #888; color: #fff; }
-        .heating .heat-btn { border-color: #ff6b6b; color: #ff6b6b; font-weight: bold; }
+        .heating .heat-btn { border-color: #ff4d4d; color: #ff4d4d; font-weight: bold; }
 
-        /* 極簡免責聲明 */
-        footer {
-            position: absolute;
-            bottom: 30px;
+        /* 極簡強制彈窗 */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 1;
+            visibility: visible;
+            transition: all 0.5s ease;
+        }
+        .modal-overlay.hide { opacity: 0; visibility: hidden; }
+        
+        .modal-content {
             max-width: 400px;
-            font-size: 0.65rem;
-            line-height: 1.6;
-            color: #444;
+            padding: 40px;
+            border: 1px solid #333;
+            text-align: center;
+        }
+        .modal-content h2 {
+            font-size: 1.2rem;
+            color: #ff4d4d;
+            margin-top: 0;
+            letter-spacing: 2px;
+        }
+        .modal-content p {
+            font-size: 0.8rem;
+            color: #aaa;
+            line-height: 1.8;
             text-align: justify;
-            padding: 0 20px;
+            margin: 25px 0;
+        }
+        .modal-btn {
+            background: #ff4d4d;
+            color: white;
+            border: none;
+            padding: 10px 25px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            letter-spacing: 1px;
         }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1 id="status">手很冰嗎？</h1>
-        <button class="heat-btn" id="toggleBtn" onclick="toggleHeat()">開啟溫暖</button>
+    <!-- 強制彈窗 -->
+    <div class="modal-overlay" id="warningModal">
+        <div class="modal-content">
+            <h2>高溫與耗電警告</h2>
+            <p>
+                本網頁為「線上暖暖包」。確認進入後，系統將強制您的 CPU 與 GPU 滿載運算以快速產生熱能。<br><br>
+                這將導致劇烈耗電。長時間高溫可能損害鋰電池壽命。若您同意自行承擔硬體風險，請點擊下方確認進入。
+            </p>
+            <button class="modal-btn" onclick="acceptWarning()">我已知曉風險，進入</button>
+        </div>
     </div>
 
-    <footer>
-        聲明：本網頁透過 CPU 滿載運算產生熱能。使用將導致劇烈耗電與裝置發熱，可能加速鋰電池老化。請勿置於密閉空間。開啟即代表您知悉並同意自行承擔硬體風險。
-    </footer>
+    <div class="container">
+        <h1 id="status">手很冰嗎？</h1>
+        <button class="heat-btn" id="toggleBtn" onclick="toggleHeat()">開啟極速發熱</button>
+    </div>
+
+    <!-- 隱藏的 GPU 加速畫布 -->
+    <canvas id="gpuCanvas" style="display:none;" width="1" height="1"></canvas>
 
     <script>
         let isHeating = false;
         const workers = [];
+        let gpuInterval = null;
         const coreCount = navigator.hardwareConcurrency || 4;
+
+        // 彈窗確認
+        function acceptWarning() {
+            document.getElementById('warningModal').classList.add('hide');
+        }
 
         function toggleHeat() {
             const body = document.body;
@@ -81,33 +128,52 @@
             const status = document.getElementById('status');
 
             if (!isHeating) {
-                // 啟動發熱
                 isHeating = true;
                 body.classList.add('heating');
-                btn.innerText = '停止取暖';
-                status.innerText = '正在溫暖您的裝置...';
+                btn.innerText = '關閉暖氣';
+                status.innerText = '雙引擎驅動中，晶片迅速升溫...';
 
-                // 產生高負載 Web Workers
-                for (let i = 0; i < coreCount; i++) {
+                // 1. CPU (加強運算複雜度)
+                for (let i = 0; i < coreCount * 1.5; i++) { 
                     const blob = new Blob([`
                         onmessage = function() {
-                            while (true) { Math.sin(Math.random()); }
+                            while (true) { 
+                                // 重度數學與矩陣模擬運算
+                                Math.atan(Math.tan(Math.sin(Math.random()) * Math.cos(Math.random()))); 
+                            }
                         }
                     `], { type: 'application/javascript' });
                     const worker = new Worker(URL.createObjectURL(blob));
                     worker.postMessage('start');
                     workers.push(worker);
                 }
+
+                // 2. GPU (透過 WebGL 渲染)
+                const canvas = document.getElementById('gpuCanvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (gl) {
+                    gpuInterval = setInterval(() => {
+                        for(let i=0; i<50000; i++) { // 循環繪製點陣
+                            gl.clear(gl.COLOR_BUFFER_BIT);
+                        }
+                    }, 1);
+                }
+
             } else {
-                // 停止發熱
                 isHeating = false;
                 body.classList.remove('heating');
-                btn.innerText = '開啟溫暖';
+                btn.innerText = '開啟發熱';
                 status.innerText = '手很冰嗎？';
 
-                // 釋放資源
+                // 停止 CPU 運算
                 workers.forEach(w => w.terminate());
                 workers.length = 0;
+
+                // 停止 GPU 運算
+                if (gpuInterval) {
+                    clearInterval(gpuInterval);
+                    gpuInterval = null;
+                }
             }
         }
     </script>
