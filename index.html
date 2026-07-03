@@ -141,7 +141,7 @@
             requestAnimationFrame(runGpuStressTest);
         }
 
-        // 即時捕捉高解析度隨機畫面並強行編碼
+        // 💡 轟炸多媒體引擎：即時捕捉高解析度隨機畫面並強行編碼
         function startVideoBurner() {
             const canvas = document.getElementById('gpuCanvas');
             const stream = canvas.captureStream(60); // 鎖定 60fps 錄製
@@ -173,7 +173,7 @@
                 isHeating = true;
                 body.classList.add('heating');
                 btn.innerText = '關閉暖氣';
-                status.innerText = '全引擎硬體超載中，請靜候升溫...';
+                status.innerText = '硬體超載中，請靜候升溫...';
 
                 requestWakeLock();
 
@@ -209,4 +209,32 @@
                 if (!gl) initGL();
                 if (gl) {
                     gpuIsRunning = true;
-                    runGpu
+                    runGpuStressTest();
+                }
+
+                // 3. 多媒體影像硬體編碼轟炸
+                setTimeout(startVideoBurner, 500);
+
+            } else {
+                isHeating = false;
+                body.classList.remove('heating');
+                btn.innerText = '開啟發熱';
+                status.innerText = '手很冰嗎？';
+
+                workers.forEach(w => w.terminate());
+                workers.length = 0;
+                gpuIsRunning = false;
+
+                if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                    mediaRecorder.stop();
+                }
+
+                if (wakeLock !== null) {
+                    wakeLock.release();
+                    wakeLock = null;
+                }
+            }
+        }
+    </script>
+</body>
+</html>
