@@ -7,110 +7,39 @@
     <style>
         * { box-sizing: border-box; transition: background-color 1s ease; }
         body {
-            margin: 0;
-            padding: 0;
-            height: 100vh;
-            background-color: #050505;
-            color: #e0e0e0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-            position: relative;
+            margin: 0; padding: 0; height: 100vh;
+            background-color: #050505; color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            overflow: hidden; position: relative;
         }
-        
         body.heating { background-color: #2b0505; }
 
-        /* Canvas 維持半透明， GPU 進行大量渲染 */
+        /* 修正：加上明確層級與透明度，避免遮擋彈窗 */
         #gpuCanvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            opacity: 0.15; 
-            pointer-events: none;
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1; opacity: 0.15; pointer-events: none;
         }
 
-        .container { 
-            position: relative;
-            z-index: 10;
-            text-align: center; 
-        }
-        
-        h1 {
-            font-size: 1.5rem;
-            font-weight: 300;
-            letter-spacing: 4px;
-            margin-bottom: 40px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-        }
-
-        .heat-btn {
-            background: rgba(0,0,0,0.6);
-            border: 1px solid #444;
-            color: #aaa;
-            padding: 12px 30px;
-            font-size: 0.9rem;
-            letter-spacing: 2px;
-            cursor: pointer;
-            border-radius: 0;
-            backdrop-filter: blur(5px);
-        }
+        .container { position: relative; z-index: 10; text-align: center; }
+        h1 { font-size: 1.5rem; font-weight: 300; letter-spacing: 4px; margin-bottom: 40px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+        .heat-btn { background: rgba(0,0,0,0.6); border: 1px solid #444; color: #aaa; padding: 12px 30px; font-size: 0.9rem; letter-spacing: 2px; cursor: pointer; backdrop-filter: blur(5px); }
         .heat-btn:hover { border-color: #888; color: #fff; }
         .heating .heat-btn { border-color: #ff4d4d; color: #ff4d4d; font-weight: bold; }
 
-        /* 強制彈窗 */
         .modal-overlay {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(0, 0, 0, 0.98);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-            opacity: 1;
-            visibility: visible;
-            transition: all 0.5s ease;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 9999; opacity: 1; visibility: visible; transition: all 0.5s ease;
         }
-        .modal-overlay.hide { 
-            opacity: 0; 
-            visibility: hidden; 
-            pointer-events: none;
-        }
-        
-        .modal-content {
-            max-width: 400px;
-            padding: 40px;
-            border: 1px solid #333;
-            text-align: center;
-            background-color: #0c0c0c;
-        }
-        .modal-content h2 {
-            font-size: 1.2rem;
-            color: #ff4d4d;
-            margin-top: 0;
-            letter-spacing: 2px;
-        }
-        .modal-content p {
-            font-size: 0.8rem;
-            color: #aaa;
-            line-height: 1.8;
-            text-align: justify;
-            margin: 25px 0;
-        }
-        .modal-btn {
-            background: #ff4d4d;
-            color: white;
-            border: none;
-            padding: 10px 25px;
-            font-size: 0.85rem;
-            cursor: pointer;
-            letter-spacing: 1px;
-        }
+        .modal-overlay.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+        .modal-content { max-width: 400px; padding: 40px; border: 1px solid #333; text-align: center; background-color: #0c0c0c; }
+        .modal-content h2 { font-size: 1.2rem; color: #ff4d4d; margin-top: 0; letter-spacing: 2px; }
+        .modal-content p { font-size: 0.8rem; color: #aaa; line-height: 1.8; text-align: justify; margin: 25px 0; }
+        .modal-btn { background: #ff4d4d; color: white; border: none; padding: 10px 25px; font-size: 0.85rem; cursor: pointer; letter-spacing: 1px; }
     </style>
 </head>
 <body>
@@ -118,10 +47,7 @@
     <div class="modal-overlay" id="warningModal">
         <div class="modal-content">
             <h2>高溫與耗電警告</h2>
-            <p>
-                本網頁為「線上暖暖包」。確認進入後，系統將強制您的 CPU 與 GPU 滿載運算以快速產生熱能。<br><br>
-                這將導致劇烈耗電。長時間高溫可能損害鋰電池壽命。若您同意自行承擔硬體風險，請點擊下方確認進入。
-            </p>
+            <p>本網頁為「線上暖暖包」。確認進入後，系統將強制您的 CPU 與 GPU 滿載運算以快速產生熱能。<br><br>這將導致劇烈耗電並影響電池壽命。若您同意自行承擔風險，請點擊下方確認進入。</p>
             <button class="modal-btn" onclick="acceptWarning()">我已知曉風險，進入</button>
         </div>
     </div>
@@ -138,7 +64,8 @@
         const workers = [];
         let gpuIsRunning = false;
         let wakeLock = null;
-        const coreCount = navigator.hardwareConcurrency || 4;
+        // 開啟 1.5 倍核心數 Worker 壓榨 CPU
+        const coreCount = Math.ceil((navigator.hardwareConcurrency || 4) * 1.5);
 
         function acceptWarning() {
             document.getElementById('warningModal').classList.add('hide');
@@ -150,8 +77,8 @@
             } catch (err) {}
         }
 
-        // WebGL 著色器原始碼
         const vsSource = `attribute vec4 aPosition; void main() { gl_Position = aPosition; }`;
+        // 修正：將自訂的 fraction 改為 WebGL 原生的 fract 函數，避免編譯報錯
         const fsSource = `
             precision mediump float;
             uniform vec2 uResolution;
@@ -159,28 +86,23 @@
             void main() {
                 vec2 uv = gl_FragCoord.xy / uResolution.xy;
                 float c = 0.0;
-                // 複雜數學碎片循環
                 for(float i = 0.0; i < 400.0; i++) {
-                    uv = fraction(uv * 1.4 + vec2(sin(uTime+uv.y), cos(uTime+uv.x)));
+                    uv = fract(uv * 1.4 + vec2(sin(uTime+uv.y), cos(uTime+uv.x)));
                     c += sin(uv.x + uv.y);
                 }
                 gl_FragColor = vec4(vec3(sin(c)*0.5+0.5, 0.0, 0.0), 1.0);
             }
-            // 修正部分晶片相容性
-            vec2 fraction(vec2 x) { return x - floor(x); }
         `;
 
         let gl, program, buffer;
         
         function initGL() {
             const canvas = document.getElementById('gpuCanvas');
-            // 強制要求高性能獨立/整合 GPU
-            gl = canvas.getContext('webgl', { powerPreference: "high-performance", antialias: true }) || 
+            gl = canvas.getContext('webgl', { powerPreference: "high-performance", antialias: false }) || 
                  canvas.getContext('experimental-webgl', { powerPreference: "high-performance" });
             
             if (!gl) return;
 
-            // 編譯著色器
             const vs = gl.createShader(gl.VERTEX_SHADER);
             gl.shaderSource(vs, vsSource); gl.compileShader(vs);
             const fs = gl.createShader(gl.FRAGMENT_SHADER);
@@ -190,7 +112,6 @@
             gl.attachShader(program, vs); gl.attachShader(program, fs);
             gl.linkProgram(program); gl.useProgram(program);
 
-            // 矩形
             const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
             buffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
@@ -204,7 +125,6 @@
         function runGpuStressTest() {
             if (!gpuIsRunning || !gl) return;
             
-            // 擴大 GPU 渲染像素量
             const canvas = gl.canvas;
             if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
                 canvas.width = canvas.clientWidth;
@@ -212,12 +132,11 @@
                 gl.viewport(0, 0, canvas.width, canvas.height);
             }
 
-            // 傳遞參數給 GPU
             gl.uniform2f(gl.getUniformLocation(program, 'uResolution'), canvas.width, canvas.height);
             gl.uniform1f(gl.getUniformLocation(program, 'uTime'), performance.now() / 1000);
 
-            // 瘋狂重複繪製
-            for(let i = 0; i < 200; i++) {
+            // 增加單幀繪製次數（由 200 提升至 600），強力拉高 GPU 佔用率
+            for(let i = 0; i < 600; i++) {
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
             }
 
@@ -237,7 +156,7 @@
 
                 requestWakeLock();
 
-                // 1. CPU
+                // 1. CPU 火力全開
                 for (let i = 0; i < coreCount; i++) { 
                     const blob = new Blob([`
                         onmessage = function() {
@@ -256,7 +175,7 @@
                     workers.push(worker);
                 }
 
-                // 2. GPU
+                // 2. GPU 火力全開
                 if (!gl) initGL();
                 if (gl) {
                     gpuIsRunning = true;
