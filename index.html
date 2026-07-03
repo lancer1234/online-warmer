@@ -18,11 +18,16 @@
             justify-content: center;
             align-items: center;
             overflow: hidden;
+            position: relative;
         }
         
         body.heating { background-color: #380808; } /* 暗紅 */
 
-        .container { text-align: center; }
+        .container { 
+            text-align: center; 
+            opacity: 1;
+            transition: opacity 0.5s ease;
+        }
         
         h1 {
             font-size: 1.5rem;
@@ -44,26 +49,31 @@
         .heat-btn:hover { border-color: #888; color: #fff; }
         .heating .heat-btn { border-color: #ff4d4d; color: #ff4d4d; font-weight: bold; }
 
-        /* 極簡強制彈窗 */
+        /* 強制彈窗，確保層級最高 */
         .modal-overlay {
             position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.95);
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.98); /* 幾乎全黑 */
             display: flex;
             justify-content: center;
             align-items: center;
-            z-index: 1000;
+            z-index: 9999; /* 最高層級 */
             opacity: 1;
             visibility: visible;
             transition: all 0.5s ease;
         }
-        .modal-overlay.hide { opacity: 0; visibility: hidden; }
+        .modal-overlay.hide { 
+            opacity: 0; 
+            visibility: hidden; 
+            pointer-events: none; /* 防止點擊到已隱藏的彈窗 */
+        }
         
         .modal-content {
             max-width: 400px;
             padding: 40px;
             border: 1px solid #333;
             text-align: center;
+            background-color: #0c0c0c;
         }
         .modal-content h2 {
             font-size: 1.2rem;
@@ -102,9 +112,9 @@
         </div>
     </div>
 
-    <div class="container">
+    <div class="container" id="mainContainer">
         <h1 id="status">手很冰嗎？</h1>
-        <button class="heat-btn" id="toggleBtn" onclick="toggleHeat()">開啟極速發熱</button>
+        <button class="heat-btn" id="toggleBtn" onclick="toggleHeat()">開啟發熱</button>
     </div>
 
     <canvas id="gpuCanvas" style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;" width="1" height="1"></canvas>
@@ -112,8 +122,8 @@
     <script>
         let isHeating = false;
         const workers = [];
-        let gpuInterval = null;
-        let wakeLock = null; // 修正 3：防止手機螢幕自動熄滅的變數
+        let gpuIsRunning = false;
+        let wakeLock = null; // 防止螢幕熄滅
         const coreCount = navigator.hardwareConcurrency || 4;
 
         // 彈窗確認
@@ -121,7 +131,7 @@
             document.getElementById('warningModal').classList.add('hide');
         }
 
-        // 修正 3 的輔助函式：啟用螢幕防休眠
+        // 螢幕防休眠輔助函式
         async function requestWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
@@ -130,6 +140,17 @@
             } catch (err) {
                 console.log('無法啟用防休眠功能');
             }
+        }
+
+        // 主執行緒 GPU 壓榨函式
+        function runGpuStressTest(gl) {
+            if (!gpuIsRunning) return;
+            // 單次執行瘋狂繪製，壓榨 GPU
+            for (let i = 0; i < 50000; i++) { 
+                gl.clear(gl.COLOR_BUFFER_BIT);
+            }
+            // 遞迴調用，保持 GPU 運作
+            requestAnimationFrame(() => runGpuStressTest(gl));
         }
 
         function toggleHeat() {
@@ -141,19 +162,19 @@
                 isHeating = true;
                 body.classList.add('heating');
                 btn.innerText = '關閉暖氣';
-                status.innerText = '雙引擎驅動中，晶片迅速升溫...';
+                status.innerText = '驅動中，迅速升溫...';
 
                 // 啟用防休眠
                 requestWakeLock();
 
-                // 1. CPU (加強運算複雜度)
-                for (let i = 0; i < coreCount * 1.5; i++) { 
-                    // 修正 2：在 Worker 內加上計時迴圈，確保程式碼不會被部分主動防禦的瀏覽器判定為「無回應腳本」而強制中斷
+                // 1. CPU (Worker 保持，微調運算複雜度)
+                // 減少數量至 1.0 倍核心數，為 GPU 運作留白
+                for (let i = 0; i < coreCount; i++) { 
                     const blob = new Blob([`
                         onmessage = function() {
                             function heat() {
                                 var start = Date.now();
-                                while (Date.now() - start < 200) { 
+                                while (Date.now() - start < 150) { 
                                     Math.atan(Math.tan(Math.sin(Math.random()) * Math.cos(Math.random()))); 
                                 }
                                 setTimeout(heat, 0);
@@ -166,21 +187,19 @@
                     workers.push(worker);
                 }
 
-                // 2. GPU (透過 WebGL 渲染)
+                // 2. GPU (移至主執行緒，WebGL 強制調用)
                 const canvas = document.getElementById('gpuCanvas');
-                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                const gl = canvas.getContext('webgl', { antialias: false, powerPreference: "high-performance" }) || canvas.getContext('experimental-webgl', { powerPreference: "high-performance" });
                 if (gl) {
-                    gpuInterval = setInterval(() => {
-                        for(let i=0; i<50000; i++) { 
-                            gl.clear(gl.COLOR_BUFFER_BIT);
-                        }
-                    }, 1);
+                    gpuIsRunning = true;
+                    gl.clearColor(1.0, 0.0, 0.0, 1.0); // 設置清除顏色為紅色，方便確認調用
+                    runGpuStressTest(gl);
                 }
 
             } else {
                 isHeating = false;
                 body.classList.remove('heating');
-                btn.innerText = '開啟極速發熱';
+                btn.innerText = '開啟發熱';
                 status.innerText = '手很冰嗎？';
 
                 // 停止 CPU 運算
@@ -188,10 +207,7 @@
                 workers.length = 0;
 
                 // 停止 GPU 運算
-                if (gpuInterval) {
-                    clearInterval(gpuInterval);
-                    gpuInterval = null;
-                }
+                gpuIsRunning = false;
 
                 // 關閉防休眠
                 if (wakeLock !== null) {
