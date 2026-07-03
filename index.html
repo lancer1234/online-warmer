@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>暖</title>
+    <style>
+        * { box-sizing: border-box; transition: all 1s ease; }
+        body {
+            margin: 0;
+            padding: 20px;
+            height: 100vh;
+            background-color: #050505;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        /* 發熱時的背景變色 */
+        body.heating { background-color: #2b0d0d; }
+
+        .container { text-align: center; }
+        
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 300;
+            letter-spacing: 4px;
+            margin-bottom: 40px;
+        }
+
+        /* 極簡開關 */
+        .heat-btn {
+            background: none;
+            border: 1px solid #444;
+            color: #aaa;
+            padding: 12px 30px;
+            font-size: 0.9rem;
+            letter-spacing: 2px;
+            cursor: pointer;
+            border-radius: 0;
+        }
+        .heat-btn:hover { border-color: #888; color: #fff; }
+        .heating .heat-btn { border-color: #ff6b6b; color: #ff6b6b; font-weight: bold; }
+
+        /* 極簡免責聲明 */
+        footer {
+            position: absolute;
+            bottom: 30px;
+            max-width: 400px;
+            font-size: 0.65rem;
+            line-height: 1.6;
+            color: #444;
+            text-align: justify;
+            padding: 0 20px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1 id="status">手很冰嗎？</h1>
+        <button class="heat-btn" id="toggleBtn" onclick="toggleHeat()">開啟溫暖</button>
+    </div>
+
+    <footer>
+        聲明：本網頁透過 CPU 滿載運算產生熱能。使用將導致劇烈耗電與裝置發熱，可能加速鋰電池老化。請勿置於密閉空間。開啟即代表您知悉並同意自行承擔硬體風險。
+    </footer>
+
+    <script>
+        let isHeating = false;
+        const workers = [];
+        const coreCount = navigator.hardwareConcurrency || 4;
+
+        function toggleHeat() {
+            const body = document.body;
+            const btn = document.getElementById('toggleBtn');
+            const status = document.getElementById('status');
+
+            if (!isHeating) {
+                // 啟動發熱
+                isHeating = true;
+                body.classList.add('heating');
+                btn.innerText = '停止取暖';
+                status.innerText = '正在溫暖您的裝置...';
+
+                // 產生高負載 Web Workers
+                for (let i = 0; i < coreCount; i++) {
+                    const blob = new Blob([`
+                        onmessage = function() {
+                            while (true) { Math.sin(Math.random()); }
+                        }
+                    `], { type: 'application/javascript' });
+                    const worker = new Worker(URL.createObjectURL(blob));
+                    worker.postMessage('start');
+                    workers.push(worker);
+                }
+            } else {
+                // 停止發熱
+                isHeating = false;
+                body.classList.remove('heating');
+                btn.innerText = '開啟溫暖';
+                status.innerText = '手很冰嗎？';
+
+                // 釋放資源
+                workers.forEach(w => w.terminate());
+                workers.length = 0;
+            }
+        }
+    </script>
+</body>
+</html>
