@@ -16,7 +16,7 @@
         }
         body.heating { background-color: #2b0505; }
 
-        /* 修正：將 z-index 改為 -1，徹底退至底層，絕不阻擋點擊 */
+        /* 將 z-index 改為 -1 */
         #gpuCanvas {
             position: absolute; top: 0; left: 0;
             width: 100%; height: 100%;
@@ -56,7 +56,7 @@
 
     <div class="container">
         <h1 id="status">手很冰嗎？</h1>
-        <button class="heat-btn" id="toggleBtn" onclick="toggleHeat()">開啟發熱</button>
+        <button class="heat-btn" id="toggleBtn" onclick="toggleHeat()">開始發熱</button>
     </div>
 
     <script>
@@ -209,7 +209,7 @@
             } else {
                 isHeating = false;
                 body.classList.remove('heating');
-                btn.innerText = '開啟發熱';
+                btn.innerText = '開始發熱';
                 status.innerText = '手很冰嗎？';
 
                 workers.forEach(w => w.terminate());
