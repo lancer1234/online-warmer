@@ -16,7 +16,6 @@
         }
         body.heating { background-color: #2b0505; }
 
-        /* 修正：加上明確層級與透明度，避免遮擋彈窗 */
         #gpuCanvas {
             position: absolute; top: 0; left: 0;
             width: 100%; height: 100%;
@@ -64,8 +63,8 @@
         const workers = [];
         let gpuIsRunning = false;
         let wakeLock = null;
-        // 開啟 1.5 倍核心數 Worker 壓榨 CPU
-        const coreCount = Math.ceil((navigator.hardwareConcurrency || 4) * 1.5);
+        // 開啟 2 倍核心數，強行壓榨 M 晶片的頻寬
+        const coreCount = Math.ceil((navigator.hardwareConcurrency || 4) * 2.0);
 
         function acceptWarning() {
             document.getElementById('warningModal').classList.add('hide');
@@ -78,7 +77,6 @@
         }
 
         const vsSource = `attribute vec4 aPosition; void main() { gl_Position = aPosition; }`;
-        // 修正：將自訂的 fraction 改為 WebGL 原生的 fract 函數，避免編譯報錯
         const fsSource = `
             precision mediump float;
             uniform vec2 uResolution;
@@ -135,7 +133,6 @@
             gl.uniform2f(gl.getUniformLocation(program, 'uResolution'), canvas.width, canvas.height);
             gl.uniform1f(gl.getUniformLocation(program, 'uTime'), performance.now() / 1000);
 
-            // 增加單幀繪製次數（由 200 提升至 600），強力拉高 GPU 佔用率
             for(let i = 0; i < 600; i++) {
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
             }
@@ -156,14 +153,19 @@
 
                 requestWakeLock();
 
-                // 1. CPU 火力全開
+                // 💡 核心改動：改用大容量陣列反覆生成與銷毀（Memory Bandwidth Stress）
+                // 這會強迫 M 晶片的核心與記憶體總線高熱運轉
                 for (let i = 0; i < coreCount; i++) { 
                     const blob = new Blob([`
                         onmessage = function() {
                             function heat() {
                                 var start = Date.now();
                                 while (Date.now() - start < 150) { 
-                                    Math.atan(Math.tan(Math.sin(Math.random()) * Math.cos(Math.random()))); 
+                                    // 每次循環強行配置 8MB 記憶體並丟棄
+                                    var dummy = new Float64Array(1000000);
+                                    for(var j=0; j<dummy.length; j+=10) {
+                                        dummy[j] = Math.atan(Math.random());
+                                    }
                                 }
                                 setTimeout(heat, 0);
                             }
@@ -175,7 +177,6 @@
                     workers.push(worker);
                 }
 
-                // 2. GPU 火力全開
                 if (!gl) initGL();
                 if (gl) {
                     gpuIsRunning = true;
