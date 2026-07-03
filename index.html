@@ -16,10 +16,11 @@
         }
         body.heating { background-color: #2b0505; }
 
+        /* 修正：將 z-index 改為 -1，徹底退至底層，絕不阻擋點擊 */
         #gpuCanvas {
             position: absolute; top: 0; left: 0;
             width: 100%; height: 100%;
-            z-index: 1; opacity: 0.15; pointer-events: none;
+            z-index: -1; opacity: 0.15; pointer-events: none;
         }
 
         .container { position: relative; z-index: 10; text-align: center; }
@@ -64,7 +65,6 @@
         let gpuIsRunning = false;
         let wakeLock = null;
         let mediaRecorder = null;
-        let videoInterval = null;
         const coreCount = Math.ceil((navigator.hardwareConcurrency || 4) * 2.0);
 
         function acceptWarning() {
@@ -141,21 +141,18 @@
             requestAnimationFrame(runGpuStressTest);
         }
 
-        // 💡 轟炸多媒體引擎：即時捕捉高解析度隨機畫面並強行編碼
         function startVideoBurner() {
             const canvas = document.getElementById('gpuCanvas');
-            const stream = canvas.captureStream(60); // 鎖定 60fps 錄製
+            const stream = canvas.captureStream(60); 
             
             try {
-                // 強制要求瀏覽器使用最高位元率的視訊編碼，激發 Media Engine 功耗
                 mediaRecorder = new MediaRecorder(stream, {
                     mimeType: 'video/webm;codecs=vp9',
-                    videoBitsPerSecond: 100000000 // 100 Mbps 超高頻寬
+                    videoBitsPerSecond: 100000000 
                 });
-                mediaRecorder.ondataavailable = () => {}; // 抓到資料直接丟棄，不佔記憶體
-                mediaRecorder.start(100); // 每 100 毫秒切片編碼一次
+                mediaRecorder.ondataavailable = () => {}; 
+                mediaRecorder.start(100); 
             } catch(e) {
-                // Safari 相容性備用方案
                 try {
                     mediaRecorder = new MediaRecorder(stream, { videoBitsPerSecond: 50000000 });
                     mediaRecorder.ondataavailable = () => {};
@@ -177,19 +174,15 @@
 
                 requestWakeLock();
 
-                // 1. CPU 神經網路與記憶體混亂轟炸
                 for (let i = 0; i < coreCount; i++) { 
                     const blob = new Blob([`
                         onmessage = function() {
-                            // 建立兩個模擬 AI 矩陣的大型陣列
                             var size = 1000;
                             var m1 = new Float64Array(size * size);
                             var m2 = new Float64Array(size * size);
-                            
                             function heat() {
                                 var start = Date.now();
                                 while (Date.now() - start < 100) { 
-                                    // 進行大量連續的跨步交叉相乘，這會強迫 CPU 的 AI 加速單元過載
                                     for(var j = 0; j < 20000; j++) {
                                         var idx = Math.floor(Math.random() * (size * size - 1));
                                         m1[idx] = Math.tanh(m1[idx]) * Math.atan(m2[idx + 1]);
@@ -205,14 +198,12 @@
                     workers.push(worker);
                 }
 
-                // 2. GPU 碎形轟炸
                 if (!gl) initGL();
                 if (gl) {
                     gpuIsRunning = true;
                     runGpuStressTest();
                 }
 
-                // 3. 多媒體影像硬體編碼轟炸
                 setTimeout(startVideoBurner, 500);
 
             } else {
