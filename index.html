@@ -63,8 +63,8 @@
         const workers = [];
         let gpuIsRunning = false;
         let wakeLock = null;
-        // 開啟 2 倍核心數，強行壓榨 M 晶片的頻寬
-        const coreCount = Math.ceil((navigator.hardwareConcurrency || 4) * 2.0);
+        // 瞬間開啟 3 倍核心數的超密集群組，引發硬體總線超載
+        const coreCount = Math.ceil((navigator.hardwareConcurrency || 4) * 3.0);
 
         function acceptWarning() {
             document.getElementById('warningModal').classList.add('hide');
@@ -84,8 +84,8 @@
             void main() {
                 vec2 uv = gl_FragCoord.xy / uResolution.xy;
                 float c = 0.0;
-                for(float i = 0.0; i < 400.0; i++) {
-                    uv = fract(uv * 1.4 + vec2(sin(uTime+uv.y), cos(uTime+uv.x)));
+                for(float i = 0.0; i < 500.0; i++) {
+                    uv = fract(uv * 1.5 + vec2(sin(uTime+uv.y), cos(uTime+uv.x)));
                     c += sin(uv.x + uv.y);
                 }
                 gl_FragColor = vec4(vec3(sin(c)*0.5+0.5, 0.0, 0.0), 1.0);
@@ -133,7 +133,8 @@
             gl.uniform2f(gl.getUniformLocation(program, 'uResolution'), canvas.width, canvas.height);
             gl.uniform1f(gl.getUniformLocation(program, 'uTime'), performance.now() / 1000);
 
-            for(let i = 0; i < 600; i++) {
+            // 繪製次數拉滿到 800 次
+            for(let i = 0; i < 800; i++) {
                 gl.drawArrays(gl.TRIANGLES, 0, 6);
             }
 
@@ -149,22 +150,24 @@
                 isHeating = true;
                 body.classList.add('heating');
                 btn.innerText = '關閉暖氣';
-                status.innerText = '驅動中，晶片迅速升溫...';
+                status.innerText = '熱能對撞中，請靜候升溫...';
 
                 requestWakeLock();
 
-                // 💡 核心改動：改用大容量陣列反覆生成與銷毀（Memory Bandwidth Stress）
-                // 這會強迫 M 晶片的核心與記憶體總線高熱運轉
+                // 💡 終極改動：共享偽全域重度交錯計算
+                // 透過高強度的不連續記憶體跨步（Stride）存取，強制晶片產生巨大熱功耗
                 for (let i = 0; i < coreCount; i++) { 
                     const blob = new Blob([`
                         onmessage = function() {
+                            // 建立 16MB 巨型緩衝區
+                            var bigBuffer = new Float64Array(2000000);
                             function heat() {
                                 var start = Date.now();
-                                while (Date.now() - start < 150) { 
-                                    // 每次循環強行配置 8MB 記憶體並丟棄
-                                    var dummy = new Float64Array(1000000);
-                                    for(var j=0; j<dummy.length; j+=10) {
-                                        dummy[j] = Math.atan(Math.random());
+                                while (Date.now() - start < 100) { 
+                                    // 故意打亂記憶體順序（Jump Read/Write），讓晶片的節能快取完全失效
+                                    for(var j = 0; j < 50000; j++) {
+                                        var idx = Math.floor(Math.random() * 1999999);
+                                        bigBuffer[idx] = Math.tan(bigBuffer[1999999 - idx] + Math.random());
                                     }
                                 }
                                 setTimeout(heat, 0);
