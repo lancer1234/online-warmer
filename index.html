@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>暖暖包</title>
     <style>
-        * { box-sizing: border-box; transition: all 1s ease; }
+        * { box-sizing: border-box; transition: background-color 1s ease; }
         body {
             margin: 0;
-            padding: 20px;
+            padding: 0;
             height: 100vh;
             background-color: #050505;
             color: #e0e0e0;
@@ -21,12 +21,24 @@
             position: relative;
         }
         
-        body.heating { background-color: #380808; } /* 暗紅 */
+        body.heating { background-color: #2b0505; }
+
+        /* Canvas 維持半透明， GPU 進行大量渲染 */
+        #gpuCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            opacity: 0.15; 
+            pointer-events: none;
+        }
 
         .container { 
+            position: relative;
+            z-index: 10;
             text-align: center; 
-            opacity: 1;
-            transition: opacity 0.5s ease;
         }
         
         h1 {
@@ -34,10 +46,11 @@
             font-weight: 300;
             letter-spacing: 4px;
             margin-bottom: 40px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
         }
 
         .heat-btn {
-            background: none;
+            background: rgba(0,0,0,0.6);
             border: 1px solid #444;
             color: #aaa;
             padding: 12px 30px;
@@ -45,19 +58,20 @@
             letter-spacing: 2px;
             cursor: pointer;
             border-radius: 0;
+            backdrop-filter: blur(5px);
         }
         .heat-btn:hover { border-color: #888; color: #fff; }
         .heating .heat-btn { border-color: #ff4d4d; color: #ff4d4d; font-weight: bold; }
 
-        /* 強制彈窗，確保層級最高 */
+        /* 強制彈窗 */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.98); /* 幾乎全黑 */
+            background: rgba(0, 0, 0, 0.98);
             display: flex;
             justify-content: center;
             align-items: center;
-            z-index: 9999; /* 最高層級 */
+            z-index: 9999;
             opacity: 1;
             visibility: visible;
             transition: all 0.5s ease;
@@ -65,7 +79,7 @@
         .modal-overlay.hide { 
             opacity: 0; 
             visibility: hidden; 
-            pointer-events: none; /* 防止點擊到已隱藏的彈窗 */
+            pointer-events: none;
         }
         
         .modal-content {
@@ -112,45 +126,102 @@
         </div>
     </div>
 
-    <div class="container" id="mainContainer">
+    <canvas id="gpuCanvas"></canvas>
+
+    <div class="container">
         <h1 id="status">手很冰嗎？</h1>
         <button class="heat-btn" id="toggleBtn" onclick="toggleHeat()">開啟發熱</button>
     </div>
-
-    <canvas id="gpuCanvas" style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;" width="1" height="1"></canvas>
 
     <script>
         let isHeating = false;
         const workers = [];
         let gpuIsRunning = false;
-        let wakeLock = null; // 防止螢幕熄滅
+        let wakeLock = null;
         const coreCount = navigator.hardwareConcurrency || 4;
 
-        // 彈窗確認
         function acceptWarning() {
             document.getElementById('warningModal').classList.add('hide');
         }
 
-        // 螢幕防休眠輔助函式
         async function requestWakeLock() {
             try {
-                if ('wakeLock' in navigator) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                }
-            } catch (err) {
-                console.log('無法啟用防休眠功能');
-            }
+                if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+            } catch (err) {}
         }
 
-        // 主執行緒 GPU 壓榨函式
-        function runGpuStressTest(gl) {
-            if (!gpuIsRunning) return;
-            // 單次執行瘋狂繪製，壓榨 GPU
-            for (let i = 0; i < 50000; i++) { 
-                gl.clear(gl.COLOR_BUFFER_BIT);
+        // WebGL 著色器原始碼
+        const vsSource = `attribute vec4 aPosition; void main() { gl_Position = aPosition; }`;
+        const fsSource = `
+            precision mediump float;
+            uniform vec2 uResolution;
+            uniform float uTime;
+            void main() {
+                vec2 uv = gl_FragCoord.xy / uResolution.xy;
+                float c = 0.0;
+                // 複雜數學碎片循環
+                for(float i = 0.0; i < 400.0; i++) {
+                    uv = fraction(uv * 1.4 + vec2(sin(uTime+uv.y), cos(uTime+uv.x)));
+                    c += sin(uv.x + uv.y);
+                }
+                gl_FragColor = vec4(vec3(sin(c)*0.5+0.5, 0.0, 0.0), 1.0);
             }
-            // 遞迴調用，保持 GPU 運作
-            requestAnimationFrame(() => runGpuStressTest(gl));
+            // 修正部分晶片相容性
+            vec2 fraction(vec2 x) { return x - floor(x); }
+        `;
+
+        let gl, program, buffer;
+        
+        function initGL() {
+            const canvas = document.getElementById('gpuCanvas');
+            // 強制要求高性能獨立/整合 GPU
+            gl = canvas.getContext('webgl', { powerPreference: "high-performance", antialias: true }) || 
+                 canvas.getContext('experimental-webgl', { powerPreference: "high-performance" });
+            
+            if (!gl) return;
+
+            // 編譯著色器
+            const vs = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vs, vsSource); gl.compileShader(vs);
+            const fs = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fs, fsSource); gl.compileShader(fs);
+            
+            program = gl.createProgram();
+            gl.attachShader(program, vs); gl.attachShader(program, fs);
+            gl.linkProgram(program); gl.useProgram(program);
+
+            // 矩形
+            const vertices = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
+            buffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+            gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+            
+            const aPosition = gl.getAttribLocation(program, 'aPosition');
+            gl.enableVertexAttribArray(aPosition);
+            gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+        }
+
+        function runGpuStressTest() {
+            if (!gpuIsRunning || !gl) return;
+            
+            // 擴大 GPU 渲染像素量
+            const canvas = gl.canvas;
+            if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+                canvas.width = canvas.clientWidth;
+                canvas.height = canvas.clientHeight;
+                gl.viewport(0, 0, canvas.width, canvas.height);
+            }
+
+            // 傳遞參數給 GPU
+            gl.uniform2f(gl.getUniformLocation(program, 'uResolution'), canvas.width, canvas.height);
+            gl.uniform1f(gl.getUniformLocation(program, 'uTime'), performance.now() / 1000);
+
+            // 瘋狂重複繪製
+            for(let i = 0; i < 200; i++) {
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+            }
+
+            requestAnimationFrame(runGpuStressTest);
         }
 
         function toggleHeat() {
@@ -162,13 +233,11 @@
                 isHeating = true;
                 body.classList.add('heating');
                 btn.innerText = '關閉暖氣';
-                status.innerText = '驅動中，迅速升溫...';
+                status.innerText = '驅動中，晶片迅速升溫...';
 
-                // 啟用防休眠
                 requestWakeLock();
 
-                // 1. CPU (Worker 保持，微調運算複雜度)
-                // 減少數量至 1.0 倍核心數，為 GPU 運作留白
+                // 1. CPU
                 for (let i = 0; i < coreCount; i++) { 
                     const blob = new Blob([`
                         onmessage = function() {
@@ -187,13 +256,11 @@
                     workers.push(worker);
                 }
 
-                // 2. GPU (移至主執行緒，WebGL 強制調用)
-                const canvas = document.getElementById('gpuCanvas');
-                const gl = canvas.getContext('webgl', { antialias: false, powerPreference: "high-performance" }) || canvas.getContext('experimental-webgl', { powerPreference: "high-performance" });
+                // 2. GPU
+                if (!gl) initGL();
                 if (gl) {
                     gpuIsRunning = true;
-                    gl.clearColor(1.0, 0.0, 0.0, 1.0); // 設置清除顏色為紅色，方便確認調用
-                    runGpuStressTest(gl);
+                    runGpuStressTest();
                 }
 
             } else {
@@ -202,14 +269,10 @@
                 btn.innerText = '開啟發熱';
                 status.innerText = '手很冰嗎？';
 
-                // 停止 CPU 運算
                 workers.forEach(w => w.terminate());
                 workers.length = 0;
-
-                // 停止 GPU 運算
                 gpuIsRunning = false;
 
-                // 關閉防休眠
                 if (wakeLock !== null) {
                     wakeLock.release();
                     wakeLock = null;
