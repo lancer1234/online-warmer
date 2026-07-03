@@ -91,7 +91,6 @@
 </head>
 <body>
 
-    <!-- 強制彈窗 -->
     <div class="modal-overlay" id="warningModal">
         <div class="modal-content">
             <h2>高溫與耗電警告</h2>
@@ -108,18 +107,29 @@
         <button class="heat-btn" id="toggleBtn" onclick="toggleHeat()">開啟極速發熱</button>
     </div>
 
-    <!-- 隱藏的 GPU 加速畫布 -->
-    <canvas id="gpuCanvas" style="display:none;" width="1" height="1"></canvas>
+    <canvas id="gpuCanvas" style="position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;" width="1" height="1"></canvas>
 
     <script>
         let isHeating = false;
         const workers = [];
         let gpuInterval = null;
+        let wakeLock = null; // 修正 3：防止手機螢幕自動熄滅的變數
         const coreCount = navigator.hardwareConcurrency || 4;
 
         // 彈窗確認
         function acceptWarning() {
             document.getElementById('warningModal').classList.add('hide');
+        }
+
+        // 修正 3 的輔助函式：啟用螢幕防休眠
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {
+                console.log('無法啟用防休眠功能');
+            }
         }
 
         function toggleHeat() {
@@ -133,14 +143,22 @@
                 btn.innerText = '關閉暖氣';
                 status.innerText = '雙引擎驅動中，晶片迅速升溫...';
 
+                // 啟用防休眠
+                requestWakeLock();
+
                 // 1. CPU (加強運算複雜度)
                 for (let i = 0; i < coreCount * 1.5; i++) { 
+                    // 修正 2：在 Worker 內加上計時迴圈，確保程式碼不會被部分主動防禦的瀏覽器判定為「無回應腳本」而強制中斷
                     const blob = new Blob([`
                         onmessage = function() {
-                            while (true) { 
-                                // 重度數學與矩陣模擬運算
-                                Math.atan(Math.tan(Math.sin(Math.random()) * Math.cos(Math.random()))); 
+                            function heat() {
+                                var start = Date.now();
+                                while (Date.now() - start < 200) { 
+                                    Math.atan(Math.tan(Math.sin(Math.random()) * Math.cos(Math.random()))); 
+                                }
+                                setTimeout(heat, 0);
                             }
+                            heat();
                         }
                     `], { type: 'application/javascript' });
                     const worker = new Worker(URL.createObjectURL(blob));
@@ -153,7 +171,7 @@
                 const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                 if (gl) {
                     gpuInterval = setInterval(() => {
-                        for(let i=0; i<50000; i++) { // 循環繪製點陣
+                        for(let i=0; i<50000; i++) { 
                             gl.clear(gl.COLOR_BUFFER_BIT);
                         }
                     }, 1);
@@ -162,7 +180,7 @@
             } else {
                 isHeating = false;
                 body.classList.remove('heating');
-                btn.innerText = '開啟發熱';
+                btn.innerText = '開啟極速發熱';
                 status.innerText = '手很冰嗎？';
 
                 // 停止 CPU 運算
@@ -173,6 +191,12 @@
                 if (gpuInterval) {
                     clearInterval(gpuInterval);
                     gpuInterval = null;
+                }
+
+                // 關閉防休眠
+                if (wakeLock !== null) {
+                    wakeLock.release();
+                    wakeLock = null;
                 }
             }
         }
